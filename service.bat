@@ -38,6 +38,12 @@ if "%~1"=="prepare_winws" (
     exit /b
 )
 
+if "%~1"=="verify_winws" (
+    call :verify_winws "%~2"
+    if errorlevel 1 exit /b 1
+    exit /b 0
+)
+
 if "%1"=="admin" (
     call :check_command chcp
     call :check_command find
@@ -124,6 +130,10 @@ if not exist "%LISTS_PATH%list-general-user.txt" (
 if not exist "%LISTS_PATH%list-exclude-user.txt" (
     echo domain.example.abc>"%LISTS_PATH%list-exclude-user.txt"
 )
+if not exist "%LISTS_PATH%list-ipset-host-skip.txt" (
+    echo camsoda.com>"%LISTS_PATH%list-ipset-host-skip.txt"
+    echo www.camsoda.com>>"%LISTS_PATH%list-ipset-host-skip.txt"
+)
 
 exit /b
 
@@ -132,6 +142,12 @@ exit /b
 :prepare_winws
 setlocal EnableDelayedExpansion
 set "restartWait=0"
+
+if not exist "%~dp0bin\winws.exe" (
+    echo [ERROR] winws.exe not found: "%~dp0bin\winws.exe"
+    endlocal
+    exit /b 1
+)
 
 sc query "zapret" >nul 2>&1
 if !errorlevel!==0 (
@@ -158,6 +174,56 @@ if !restartWait!==1 (
 
 endlocal
 exit /b
+
+
+:: VERIFY STANDALONE =====================
+:verify_winws
+setlocal EnableDelayedExpansion
+set "PROFILE=%~1"
+set /a VERIFY_TRY=0
+
+echo.
+echo === Verify bypass ^(!PROFILE!^) ===
+
+if not exist "%~dp0bin\WinDivert64.sys" (
+    call :PrintYellow "[?] WinDivert64.sys not found next to winws.exe. Bypass may fail to start."
+)
+
+:verify_winws_retry
+ping -n 2 127.0.0.1 >nul
+tasklist /FI "IMAGENAME eq winws.exe" 2>nul | find /I "winws.exe" >nul
+if !errorlevel!==0 goto verify_winws_ok
+set /a VERIFY_TRY+=1
+if !VERIFY_TRY! lss 12 goto verify_winws_retry
+
+call :PrintRed "[X] winws.exe did not start after waiting. Check Administrator rights, antivirus, and bin\winws.exe."
+echo.
+pause
+endlocal
+exit /b 1
+
+:verify_winws_ok
+call :PrintGreen "[OK] winws.exe is running."
+
+netsh interface tcp show global | findstr /i "timestamps" | findstr /i "enabled" > nul
+if !errorlevel!==0 (
+    call :PrintGreen "[OK] TCP timestamps are enabled."
+) else (
+    call :PrintYellow "[?] TCP timestamps look disabled; enabling..."
+    netsh interface tcp set global timestamps=enabled > nul 2>&1
+    netsh interface tcp show global | findstr /i "timestamps" | findstr /i "enabled" > nul
+    if !errorlevel!==0 (
+        call :PrintGreen "[OK] TCP timestamps enabled."
+    ) else (
+        call :PrintYellow "[?] Could not confirm TCP timestamps (may need Administrator)."
+    )
+)
+
+echo.
+call :PrintGreen "Ready for testing."
+echo ===
+endlocal
+exit /b 0
 
 
 :: TCP ENABLE ==========================
