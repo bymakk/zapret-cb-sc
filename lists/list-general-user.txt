@@ -24,6 +24,7 @@ nwr.static.mmcdn.com
 ru.stripchat.com
 sr-client-cfg.amplitude.com
 static-pub.highwebmedia.com
+realtime.pa.highwebmedia.com
 static.cloudflareinsights.com
 ststandard.com
 stripchat.com
@@ -49,6 +50,9 @@ img.doppiocdn.com
 img.strpst.com
 ja.stripchat.com
 jpeg.live.mmcdn.com
+origin13-sof.live.mmcdn.com
+origin6-hel.live.mmcdn.com
+origin7-hel.live.mmcdn.com
 link.inbox.stripchat.com
 nwr.mmcdn.com
 pl.stripchat.com

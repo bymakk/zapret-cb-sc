@@ -74,7 +74,6 @@
   - **`Update Hosts File`** — проверка/подсказка по `hosts` из [`.service/hosts`](https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/.service/hosts) (веб Telegram / голос Discord у апстрима)
   - **`Check for Updates`** — сравнение с [`.service/version.txt`](https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/.service/version.txt), открытие [архива main.zip](https://github.com/bymakk/zapret-cb-sc/archive/refs/heads/main.zip)
   - **`Run Diagnostics`** — типовые причины сбоев
-  - **`Run Tests`** — [`utils/test zapret.ps1`](./utils/test%20zapret.ps1)
 
 <a id="hosts-telegram-discord"></a>
 
