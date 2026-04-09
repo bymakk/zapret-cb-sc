@@ -148,7 +148,7 @@ Secure DNS, перебор стратегий, браузерный https://disc
 
 ## 🗒️ Добавление адресов
 
-- **`lists/list-general-user.txt`** — домены для hostlist (поддомены обычно покрываются шаблоном списка)
+- **`lists/list-general-user.txt`** — домены для hostlist; в winws/zapret строка **без** префикса `^` матчит и сам хост, и **все поддомены**. Во всех `general*.bat` задано `--hostlist-domains=…` для зон **chaturbate.com**, **stripchat.com**, **livejasmin.com**, **jasmin.com**, **dditsadn.com**, **dditscdn.com**, **dcbosf.com**, **hotjar.com**, **hotjar.io**, **hcaptcha.com**, **scarabresearch.com** (часть зон подтверждена сканами [urlscan.io](https://docs.urlscan.io/pages/api-intro); **emarsys** — только явный хост в `list-general-user.txt`). Перенос из `zapret-strategy-nfqws` без гигантских Instagram/Facebook/Telegram CIDR. Полный перечень поддоменов заранее не исчерпать — при новом хосте дописывайте строку в этот файл.
 - **`lists/list-exclude-user.txt`** — исключения доменов из hostlist-правил
 - **`lists/list-ipset-host-skip.txt`** — хосты, для которых **не** применяется второй слой правил по **ipset** (важно для части сценариев Camsoda)
 - **`lists/ipset-all.txt`** — IP и подсети для ipset-правил
