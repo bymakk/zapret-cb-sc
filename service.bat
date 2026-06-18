@@ -1,5 +1,5 @@
 @echo off
-set "LOCAL_VERSION=1.9.7b"
+set "LOCAL_VERSION=1.9.8"
 
 :: External commands
 if "%~1"=="status_zapret" (
@@ -29,6 +29,11 @@ if "%~1"=="load_game_filter" (
 
 if "%~1"=="load_user_lists" (
     call :load_user_lists
+    exit /b
+)
+
+if "%~1"=="self_update" (
+    call :self_update "%~2"
     exit /b
 )
 
@@ -70,6 +75,7 @@ cls
 call :ipset_switch_status
 call :game_switch_status
 call :check_updates_switch_status
+call :auto_update_switch_status
 
 set "menu_choice=null"
 
@@ -86,20 +92,22 @@ echo   :: SETTINGS
 echo      4. Game Filter         [!GameFilterStatus!]
 echo      5. IPSet Filter        [!IPsetStatus!]
 echo      6. Auto-Update Check   [!CheckUpdatesStatus!]
+echo      7. Auto-Update Lists   [!AutoUpdateStatus!]
 echo.
 echo   :: UPDATES
-echo      7. Update IPSet List
-echo      8. Update Hosts File
-echo      9. Check for Updates
+echo      8. Update Lists Now
+echo      9. Update IPSet List
+echo      10. Update Hosts File
+echo      11. Check for Updates
 echo.
 echo   :: TOOLS
-echo      10. Run Diagnostics
+echo      12. Run Diagnostics
 echo.
 echo   ----------------------------------------
 echo      0. Exit
 echo.
 
-set /p menu_choice=   Select option (0-10): 
+set /p menu_choice=   Select option (0-12):
 
 if "%menu_choice%"=="1" goto service_install
 if "%menu_choice%"=="2" goto service_remove
@@ -107,10 +115,12 @@ if "%menu_choice%"=="3" goto service_status
 if "%menu_choice%"=="4" goto game_switch
 if "%menu_choice%"=="5" goto ipset_switch
 if "%menu_choice%"=="6" goto check_updates_switch
-if "%menu_choice%"=="7" goto ipset_update
-if "%menu_choice%"=="8" goto hosts_update
-if "%menu_choice%"=="9" goto service_check_updates
-if "%menu_choice%"=="10" goto service_diagnostics
+if "%menu_choice%"=="7" goto auto_update_switch
+if "%menu_choice%"=="8" goto lists_update_now
+if "%menu_choice%"=="9" goto ipset_update
+if "%menu_choice%"=="10" goto hosts_update
+if "%menu_choice%"=="11" goto service_check_updates
+if "%menu_choice%"=="12" goto service_diagnostics
 if "%menu_choice%"=="0" exit /b
 goto menu
 
@@ -979,37 +989,21 @@ goto menu
 chcp 437 > nul
 cls
 
-set "listFile=%~dp0lists\ipset-all.txt"
-set "backupFile=%listFile%.backup"
-set "tempFile=%TEMP%\zapret_ipset_service.txt"
-set "url=https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/.service/ipset-service.txt"
+echo Updating ipset-all (Flowseal base + your lists\ipset-user.txt)...
+echo:
 
-echo Updating ipset-all...
+call :upd_vars
+call :ipset_switch_status
 
-if exist "%SystemRoot%\System32\curl.exe" (
-    curl -L -o "%tempFile%" "%url%"
+if /i "!IPsetStatus!"=="loaded" (
+    call :rebuild_ipset "%~dp0lists\ipset-all.txt"
 ) else (
-    powershell -NoProfile -Command ^
-        "$url = '%url%';" ^
-        "$out = '%tempFile%';" ^
-        "$dir = Split-Path -Parent $out;" ^
-        "if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null };" ^
-        "$res = Invoke-WebRequest -Uri $url -TimeoutSec 10 -UseBasicParsing;" ^
-        "if ($res.StatusCode -eq 200) { $res.Content | Out-File -FilePath $out -Encoding UTF8 } else { exit 1 }"
+    call :PrintYellow "IPSet Filter mode is '!IPsetStatus!'. Rebuilding the backup list instead."
+    call :PrintYellow "Switch IPSet Filter to 'loaded' (menu 5) to activate it."
+    call :rebuild_ipset "%~dp0lists\ipset-all.txt.backup"
 )
 
-if not exist "%tempFile%" (
-    call :PrintRed "Failed to download ipset list from repository"
-    pause
-    goto menu
-)
-
-copy /Y "%tempFile%" "%listFile%" >nul
-if exist "%backupFile%" (
-    copy /Y "%tempFile%" "%backupFile%" >nul
-)
-del /f /q "%tempFile%" >nul 2>&1
-
+echo:
 echo Finished
 
 pause
@@ -1081,6 +1075,200 @@ if "%needsUpdate%"=="1" (
 echo:
 pause
 goto menu
+
+
+:: ============================================================
+:: AUTO-UPDATE LISTS (Stage A)
+:: Pulls base lists from the fork and rebuilds ipset-all =
+:: Flowseal base U lists\ipset-user.txt. Fail-open: any download
+:: error keeps the existing local file and lets winws start.
+:: ============================================================
+
+:auto_update_switch_status
+chcp 437 > nul
+
+set "autoUpdateFlag=%~dp0utils\auto_update.enabled"
+if exist "%autoUpdateFlag%" (
+    set "AutoUpdateStatus=enabled"
+) else (
+    set "AutoUpdateStatus=disabled"
+)
+exit /b
+
+
+:auto_update_switch
+chcp 437 > nul
+cls
+
+set "autoUpdateFlag=%~dp0utils\auto_update.enabled"
+if not exist "%autoUpdateFlag%" (
+    echo Enabling list auto-update on launch...
+    echo ENABLED> "%autoUpdateFlag%"
+) else (
+    echo Disabling list auto-update on launch...
+    del /f /q "%autoUpdateFlag%"
+)
+
+pause
+goto menu
+
+
+:lists_update_now
+chcp 437 > nul
+cls
+
+echo Forcing list update now...
+echo:
+call :self_update force
+
+echo:
+pause
+goto menu
+
+
+:upd_vars
+set "RAW=https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main"
+set "CDN=https://cdn.jsdelivr.net/gh/bymakk/zapret-cb-sc@main"
+set "FS_RAW=https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main"
+set "FS_CDN=https://cdn.jsdelivr.net/gh/Flowseal/zapret-discord-youtube@main"
+set "LISTS=%~dp0lists\"
+set "STAMP=%~dp0utils\last_update.txt"
+set "UPDATE_THROTTLE_H=6"
+set "TMP=%TEMP%\zapret_upd"
+if not exist "%TMP%" md "%TMP%" >nul 2>&1
+exit /b
+
+
+:self_update
+setlocal EnableDelayedExpansion
+set "force=%~1"
+
+if defined NO_UPDATE_CHECK ( endlocal & exit /b )
+
+call :upd_vars
+
+if /i not "!force!"=="force" (
+    if not exist "%~dp0utils\auto_update.enabled" ( endlocal & exit /b )
+    call :is_fresh
+    if !errorlevel!==0 (
+        echo [auto-update] lists are fresh, skipping
+        endlocal & exit /b
+    )
+)
+
+:: Fast reachability probe so a blocked GitHub does not stall winws startup.
+call :probe
+if !errorlevel! neq 0 (
+    call :PrintYellow "[auto-update] repository unreachable, keeping cached lists"
+    >"%STAMP%" echo %DATE% %TIME%
+    endlocal & exit /b
+)
+
+echo [auto-update] refreshing lists from repository...
+
+:: 1) Base list files (managed). *-user.txt files are NOT touched.
+if exist "%~dp0.service\manifest.txt" (
+    for /f "usebackq eol=; delims=" %%P in ("%~dp0.service\manifest.txt") do (
+        set "REL=%%P"
+        set "LOCALREL=!REL:/=\!"
+        call :fetch_managed "%RAW%/%%P" "%CDN%/%%P" "%TMP%\list.tmp"
+        if !errorlevel!==0 (
+            copy /Y "%TMP%\list.tmp" "%~dp0!LOCALREL!" >nul
+            echo   [ok] !REL!
+        ) else (
+            call :PrintYellow "  [skip] !REL! ^(download failed, keeping local copy^)"
+        )
+    )
+)
+
+:: 2) ipset-all = Flowseal base U your IPs (only when IPSet Filter is 'loaded')
+call :ipset_switch_status
+if /i "!IPsetStatus!"=="loaded" (
+    call :rebuild_ipset "%LISTS%ipset-all.txt"
+) else (
+    echo   [ipset] filter mode is '!IPsetStatus!', ipset-all not rebuilt
+)
+
+>"%STAMP%" echo %DATE% %TIME%
+echo [auto-update] done
+endlocal
+exit /b
+
+
+:is_fresh
+:: errorlevel 0 = fresh (skip), 1 = stale (update)
+if not exist "%STAMP%" exit /b 1
+set "FRESHFLAG=S"
+for /f "delims=" %%H in ('powershell -NoProfile -Command "try{ if(((Get-Date)-(Get-Item -LiteralPath '%STAMP%').LastWriteTime).TotalHours -lt %UPDATE_THROTTLE_H%){'F'}else{'S'} }catch{'S'}"') do set "FRESHFLAG=%%H"
+if "%FRESHFLAG%"=="F" exit /b 0
+exit /b 1
+
+
+:fetch
+:: %1 url  %2 outfile  -> errorlevel 0 on a valid, non-empty, non-HTML file
+:: DisableDelayedExpansion so the literal '!' in "<!doctype" is not eaten
+:: (this routine is called from a EnableDelayedExpansion scope).
+setlocal DisableDelayedExpansion
+set "FURL=%~1"
+set "FOUT=%~2"
+del /f /q "%FOUT%" >nul 2>&1
+if exist "%SystemRoot%\System32\curl.exe" (
+    curl -fsSL --connect-timeout 4 -m 12 -H "Cache-Control: no-cache" -o "%FOUT%" "%FURL%" >nul 2>&1
+) else (
+    powershell -NoProfile -Command "try{ Invoke-WebRequest -Uri '%FURL%' -OutFile '%FOUT%' -TimeoutSec 12 -UseBasicParsing -Headers @{'Cache-Control'='no-cache'} }catch{ exit 1 }" >nul 2>&1
+)
+if not exist "%FOUT%" ( endlocal & exit /b 1 )
+for %%S in ("%FOUT%") do if %%~zS LSS 2 ( del /f /q "%FOUT%" >nul 2>&1 & endlocal & exit /b 1 )
+findstr /i /c:"<html" /c:"<!doctype" "%FOUT%" >nul 2>&1 && ( del /f /q "%FOUT%" >nul 2>&1 & endlocal & exit /b 1 )
+endlocal & exit /b 0
+
+
+:fetch_managed
+:: %1 raw-url  %2 cdn-url  %3 outfile  -> try raw, then jsdelivr mirror
+call :fetch "%~1" "%~3"
+if %errorlevel%==0 exit /b 0
+call :fetch "%~2" "%~3"
+exit /b %errorlevel%
+
+
+:probe
+:: errorlevel 0 = repository reachable (raw or jsdelivr), 1 = unreachable
+call :fetch "%RAW%/.service/version.txt" "%TMP%\probe.tmp"
+if %errorlevel%==0 ( del /f /q "%TMP%\probe.tmp" >nul 2>&1 & exit /b 0 )
+call :fetch "%CDN%/.service/version.txt" "%TMP%\probe.tmp"
+if %errorlevel%==0 ( del /f /q "%TMP%\probe.tmp" >nul 2>&1 & exit /b 0 )
+exit /b 1
+
+
+:rebuild_ipset
+:: %1 = output file. ipset = dedup(Flowseal base U lists\ipset-user.txt), IPv4 + IPv6.
+set "IPSET_OUT=%~1"
+set "BASE=%TMP%\ipset-base.txt"
+set "USER=%LISTS%ipset-user.txt"
+
+:: base: fork mirror first (.service/ipset-base.txt), then Flowseal upstream directly
+call :fetch_managed "%RAW%/.service/ipset-base.txt" "%CDN%/.service/ipset-base.txt" "%BASE%"
+if not %errorlevel%==0 (
+    call :fetch_managed "%FS_RAW%/.service/ipset-service.txt" "%FS_CDN%/.service/ipset-service.txt" "%BASE%"
+)
+if not exist "%BASE%" (
+    call :PrintYellow "  [ipset] base list unavailable, keeping current ipset-all"
+    exit /b
+)
+if not exist "%USER%" type nul > "%USER%"
+
+powershell -NoProfile -Command ^
+    "$re4 = '^\d{1,3}(\.\d{1,3}){3}(/\d{1,2})?$';" ^
+    "$re6 = '^[0-9A-Fa-f:]+(/\d{1,3})?$';" ^
+    "$lines = @();" ^
+    "if (Test-Path -LiteralPath '%BASE%') { $lines += Get-Content -LiteralPath '%BASE%' };" ^
+    "if (Test-Path -LiteralPath '%USER%') { $lines += Get-Content -LiteralPath '%USER%' };" ^
+    "$ips = $lines | ForEach-Object { $_.Trim() } | Where-Object { $_ -match $re4 -or ($_ -match $re6 -and $_.Contains(':')) } | Sort-Object -Unique;" ^
+    "if ($ips.Count -gt 0) { Set-Content -LiteralPath '%IPSET_OUT%' -Value $ips -Encoding ascii; Write-Host ('  [ipset] ' + $ips.Count + ' entries') } else { Write-Host '  [ipset] empty or invalid download, keeping current list'; exit 1 }"
+
+if %errorlevel%==0 if /i "%IPSET_OUT%"=="%LISTS%ipset-all.txt" if exist "%LISTS%ipset-all.txt.backup" copy /Y "%IPSET_OUT%" "%LISTS%ipset-all.txt.backup" >nul
+del /f /q "%BASE%" >nul 2>&1
+exit /b
 
 
 :: Utility functions

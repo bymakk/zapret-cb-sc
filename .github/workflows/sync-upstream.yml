@@ -1,0 +1,50 @@
+name: sync-upstream
+
+# Mirrors the Flowseal base lists into this fork so clients can pull a single
+# origin (Этап A "merge in fork"). The big base ipset becomes .service/ipset-base.txt;
+# base domain/exclude lists are refreshed from upstream. Your *-user.txt and
+# lists/ipset-user.txt are never touched here.
+#
+# Runs nightly and on manual dispatch. If you prefer GitHub's native "Sync fork"
+# for the base domain lists, you can trim the list below to just ipset-base.txt.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # daily 03:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull Flowseal base lists
+        run: |
+          set -e
+          UP="https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main"
+          mkdir -p .service lists
+
+          # Base IP set (Flowseal's big ipset lives at .service/ipset-service.txt)
+          curl -fsSL "$UP/.service/ipset-service.txt" -o .service/ipset-base.txt
+
+          # Base domain / exclude lists (no user customization in these)
+          curl -fsSL "$UP/lists/list-general.txt"  -o lists/list-general.txt
+          curl -fsSL "$UP/lists/list-google.txt"   -o lists/list-google.txt
+          curl -fsSL "$UP/lists/list-exclude.txt"  -o lists/list-exclude.txt
+          curl -fsSL "$UP/lists/ipset-exclude.txt" -o lists/ipset-exclude.txt
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .service/ipset-base.txt lists/list-general.txt lists/list-google.txt lists/list-exclude.txt lists/ipset-exclude.txt
+          if git diff --cached --quiet; then
+            echo "No upstream changes."
+          else
+            git commit -m "sync: refresh Flowseal base lists"
+            git push
+          fi

@@ -57,6 +57,7 @@
 - Перед стартом **`general*.bat`** вызывается **`service.bat prepare_winws`**: останавливается предыдущий `winws.exe`, сервис `zapret` (если был), чистится WinDivert — удобно переключать пресеты.
 - После запуска — **`verify_winws`**: проверка, что `winws.exe` поднялся, и контроль TCP timestamps.
 - Пункты **`Update IPSet List`**, **`Update Hosts File`**, **`Check for Updates`** в `service.bat` берут данные из **этого** репозитория (ветка `main`, папка [`.service`](./.service)).
+- **Автообновление списков при запуске** — при старте любого `general*.bat` вызывается `service.bat self_update`: базовые списки и `ipset-all` (база Flowseal ∪ ваши IP) подтягиваются из форка. Подробности — в разделе [Автообновление списков](#auto-update).
 
 ## ℹ️ Краткие описания файлов
 
@@ -69,8 +70,10 @@
   - **`Check Status`** — статус служб и процесса обхода
   - **`Game Filter`** — расширенный фильтр портов для игр/UDP-TCP; **после смены — перезапуск стратегии**
   - **`IPSet Filter`** — режимы работы с `ipset-all.txt` (`none` / `loaded` / `any`)
-  - **`Auto-Update Check`** — вкл/выкл фоновой проверки обновлений
-  - **`Update IPSet List`** — подтягивание актуального списка из [`.service/ipset-service.txt`](https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/.service/ipset-service.txt)
+  - **`Auto-Update Check`** — вкл/выкл фоновой проверки версии
+  - **`Auto-Update Lists`** — вкл/выкл автообновления списков при каждом запуске стратегии (см. раздел ниже)
+  - **`Update Lists Now`** — принудительно обновить базовые списки и пересобрать `ipset-all` прямо сейчас
+  - **`Update IPSet List`** — пересобрать `ipset-all.txt` = база Flowseal (`.service/ipset-base.txt`) ∪ ваши IP (`lists/ipset-user.txt`)
   - **`Update Hosts File`** — проверка/подсказка по `hosts` из [`.service/hosts`](https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/.service/hosts) (веб Telegram / голос Discord у апстрима)
   - **`Check for Updates`** — сравнение с [`.service/version.txt`](https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/.service/version.txt), открытие [архива main.zip](https://github.com/bymakk/zapret-cb-sc/archive/refs/heads/main.zip)
   - **`Run Diagnostics`** — типовые причины сбоев
@@ -96,6 +99,34 @@
 8. Перезапустите браузер / Discord (при необходимости — ПК) и проверьте снова. Убедитесь, что файл на диске **действительно обновился** (дата изменения, содержимое).
 
 Если после этого проблема остаётся, дополнительно проверьте **Secure DNS**, рабочую стратегию **`general*.bat`** и пункт **`Run Diagnostics`** в `service.bat`.
+
+<a id="auto-update"></a>
+
+## 🔄 Автообновление списков при запуске (Этап A)
+
+При старте любого **`general*.bat`** после `prepare_winws`/`load_user_lists` вызывается **`service.bat self_update`**, который обновляет списки из форка **до** запуска `winws.exe`.
+
+**Что обновляется**
+- **Базовые списки** из манифеста [`.service/manifest.txt`](./.service/manifest.txt): `list-general.txt`, `list-google.txt`, `list-exclude.txt`, `ipset-exclude.txt` — тянутся из форка (`raw.githubusercontent` с фолбэком на `cdn.jsdelivr.net`).
+- **`lists/ipset-all.txt`** пересобирается как **база Flowseal ∪ ваши IP** (только в режиме `IPSet Filter = loaded`):
+  - **база** — `.service/ipset-base.txt` форка (наполняется GitHub Action [`sync-upstream`](./.github/workflows/sync-upstream.yml) из Flowseal `.service/ipset-service.txt`); если её ещё нет, клиент берёт базу напрямую из Flowseal;
+  - **ваши IP** — [`lists/ipset-user.txt`](./lists/ipset-user.txt) (обход Chaturbate / Stripchat / Lovense и т. д. — правьте этот файл).
+
+**Что НЕ трогается** (остаётся локальным): `list-general-user.txt`, `list-exclude-user.txt`, `ipset-exclude-user.txt`, `list-ipset-host-skip.txt`, `ipset-user.txt`.
+
+**Где сводятся апстрим и ваши добавки** — в **форке** (`bymakk/zapret-cb-sc`): база синхронизируется кнопкой **Sync fork**/Action, ваши коммиты ложатся сверху. Клиент только скачивает готовое — git у пользователя не нужен.
+
+**Надёжность (fail-open)**
+- Перед обновлением — быстрый пробник доступности репозитория; если GitHub недоступен (типично за DPI) — **берутся локальные списки, `winws` стартует без задержки**.
+- Любая ошибка скачивания/битый файл (HTML/пусто) → файл **не** заменяется, используется текущая копия.
+- Тротлинг: не чаще раза в **6 часов** (метка `utils/last_update.txt`); кнопка **`Update Lists Now`** игнорирует тротлинг.
+
+**Управление**
+- Меню `service.bat` → **`Auto-Update Lists`** (вкл/выкл, по умолчанию **вкл** — файл-флаг [`utils/auto_update.enabled`](./utils)).
+- Полностью отключить сетевые проверки — переменная окружения `NO_UPDATE_CHECK`.
+
+> [!NOTE]
+> С базой Flowseal `ipset-all.txt` становится большим (десятки тысяч IPv4/IPv6). Это и есть «базовый список айпи Flowseal + ваши». Если нужен только кам-фокус — держите `IPSet Filter` вне режима `loaded`, либо переключите источник базы в [`service.bat`](./service.bat) (`:rebuild_ipset`).
 
 ## ☑️ Распространённые вопросы
 
@@ -151,7 +182,8 @@ Secure DNS, перебор стратегий, браузерный https://disc
 - **`lists/list-general-user.txt`** — домены для hostlist; в winws/zapret строка **без** префикса `^` матчит и сам хост, и **все поддомены**. Во всех `general*.bat` задано `--hostlist-domains=…` для зон **chaturbate.com**, **stripchat.com**, **livejasmin.com**, **jasmin.com**, **dditsadn.com**, **dditscdn.com**, **dcbosf.com**, **hotjar.com**, **hotjar.io**, **hcaptcha.com**, **scarabresearch.com** (часть зон подтверждена сканами [urlscan.io](https://docs.urlscan.io/pages/api-intro); **emarsys** — только явный хост в `list-general-user.txt`). Перенос из `zapret-strategy-nfqws` без гигантских Instagram/Facebook/Telegram CIDR. Полный перечень поддоменов заранее не исчерпать — при новом хосте дописывайте строку в этот файл.
 - **`lists/list-exclude-user.txt`** — исключения доменов из hostlist-правил
 - **`lists/list-ipset-host-skip.txt`** — хосты, для которых **не** применяется второй слой правил по **ipset** (важно для части сценариев Camsoda)
-- **`lists/ipset-all.txt`** — IP и подсети для ipset-правил
+- **`lists/ipset-user.txt`** — **ваши** IP/подсети (Chaturbate, Stripchat, Lovense и т. д.); попадают в `ipset-all` при пересборке
+- **`lists/ipset-all.txt`** — активный ipset; при включённом автообновлении **генерируется** = база Flowseal ∪ `ipset-user.txt`. Правьте `ipset-user.txt`, а не этот файл
 - **`lists/ipset-exclude-user.txt`** — исключения по IP/подсетям  
 Файлы **`*-user.txt`** и **`list-ipset-host-skip.txt`** при отсутствии создаются/дополняются при первом запуске через логику `service.bat`.
 

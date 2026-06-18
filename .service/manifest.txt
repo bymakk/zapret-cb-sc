@@ -1,0 +1,16 @@
+; manifest.txt — files auto-refreshed from the fork on every launch (Этап A).
+; Lines starting with ';' are comments. Paths are relative to the repo root and
+; are pulled from https://raw.githubusercontent.com/bymakk/zapret-cb-sc/main/<path>
+; (with cdn.jsdelivr.net fallback). These are BASE lists only.
+;
+; NOT listed here on purpose (stay local / never overwritten):
+;   lists/list-general-user.txt      (your cam/Lovense domains)
+;   lists/list-exclude-user.txt      (your local excludes)
+;   lists/ipset-exclude-user.txt     (your local IP excludes)
+;   lists/list-ipset-host-skip.txt   (cam-specific tuning)
+;   lists/ipset-user.txt             (your cam/Lovense IPs — merged into ipset-all separately)
+;
+lists/list-general.txt
+lists/list-google.txt
+lists/list-exclude.txt
+lists/ipset-exclude.txt

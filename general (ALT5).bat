@@ -9,6 +9,7 @@ if errorlevel 1 exit /b 1
 call service.bat check_updates
 call service.bat load_game_filter
 call service.bat load_user_lists
+call service.bat self_update
 echo:
 
 set "BIN=%~dp0bin\"
