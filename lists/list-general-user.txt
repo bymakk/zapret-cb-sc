@@ -157,3 +157,5 @@ www.lovense.co.uk
 www.lovense.com
 www.myfreecams.com
 www.vibemate.com
+translate.googleapis.com
+translate-pa.googleapis.com
